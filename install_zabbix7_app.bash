@@ -4,12 +4,12 @@
 #  Zabbix server + frontend (Apache + PHP-FPM) + Agent 2, com banco REMOTO
 #  Ubuntu 26.04
 #
-#  Rode DEPOIS do install_zabbix7_db.bash (no servidor de banco).
+#  Rode DEPOIS do install_zabbix7_db.sh (no servidor de banco).
 #
 #  Uso:
-#     sudo bash install_zabbix7_app.bash                   # lê ./.env ao lado do script
-#     sudo bash install_zabbix7_app.bash --env /caminho/app.env
-#     sudo ZBX_DB_HOST=10.0.0.10 bash install_zabbix7_app.bash
+#     sudo bash install_zabbix7_app.sh                   # lê ./.env ao lado do script
+#     sudo bash install_zabbix7_app.sh --env /caminho/app.env
+#     sudo ZBX_DB_HOST=10.0.0.10 bash install_zabbix7_app.sh
 #
 #  Parâmetros (no .env ou como variáveis de ambiente):
 #     ZBX_DB_HOST   IP/hostname do servidor de banco (OBRIGATÓRIO; se vazio, é perguntado)
@@ -90,7 +90,39 @@ GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC}  $*" | tee -a "$LOG_FILE"; }
 warn()  { echo -e "${YELLOW}[AVISO]${NC} $*" | tee -a "$LOG_FILE"; }
 fatal() { echo -e "${RED}[ERRO]${NC}  $*" | tee -a "$LOG_FILE"; exit 1; }
-trap 'fatal "Falha na linha $LINENO. Veja o log: $LOG_FILE"' ERR
+trap 'echo "----- últimas linhas do log -----"; tail -n 15 "$LOG_FILE"; echo "---------------------------------"; fatal "Falha na linha $LINENO. Log completo: $LOG_FILE"' ERR
+
+# O apt rejeita repositórios com data "no futuro" ("Release file ... is not
+# valid yet") quando o relógio do servidor está atrasado. Sincroniza antes.
+sync_clock() {
+    info "Verificando sincronização do relógio (NTP)..."
+    timedatectl set-ntp true >>"$LOG_FILE" 2>&1 || true
+    if command -v chronyc >/dev/null; then chronyc -a makestep >>"$LOG_FILE" 2>&1 || true; fi
+    local i
+    for i in $(seq 1 30); do
+        if [[ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" == "yes" ]]; then
+            info "Relógio sincronizado: $(date)"
+            return 0
+        fi
+        sleep 1
+    done
+
+    # NTP bloqueado (porta 123/UDP)? Usa o cabeçalho Date de um servidor HTTP.
+    warn "NTP não sincronizou em 30s; ajustando o relógio pelo horário HTTP..."
+    local http_date=""
+    if command -v curl >/dev/null; then
+        http_date=$(curl -sI --max-time 10 http://archive.ubuntu.com/ubuntu/ 2>/dev/null \
+                    | awk -F': ' 'tolower($1)=="date"{print $2}' | tr -d '\r')
+    elif command -v wget >/dev/null; then
+        http_date=$(wget -qS --spider --timeout=10 http://archive.ubuntu.com/ubuntu/ 2>&1 \
+                    | awk -F': ' 'tolower($1)~/date$/{print $2}' | tail -n1 | tr -d '\r')
+    fi
+    if [[ -n "$http_date" ]] && date -s "$http_date" >>"$LOG_FILE" 2>&1; then
+        info "Relógio ajustado para: $(date)"
+    else
+        warn "Não foi possível ajustar o relógio. Se o apt falhar com 'not valid yet', corrija a data/hora do servidor."
+    fi
+}
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -122,8 +154,14 @@ fi
 # 2. Pacotes base e locale
 # -----------------------------------------------------------------------------
 info "Atualizando sistema e instalando dependências básicas..."
-apt-get update -y >>"$LOG_FILE" 2>&1
-apt-get install -y wget curl gnupg ca-certificates locales >>"$LOG_FILE" 2>&1
+sync_clock
+# Após acertar o relógio o Ubuntu costuma iniciar as atualizações automáticas,
+# que travam o apt. As chamadas abaixo esperam até 10 min pela liberação.
+if pgrep -f "unattended-upgrade|apt.systemd.daily" >/dev/null; then
+    info "Atualizações automáticas do Ubuntu em andamento; aguardando o apt ser liberado (até 10 min)..."
+fi
+apt-get -o DPkg::Lock::Timeout=600 update -y >>"$LOG_FILE" 2>&1
+apt-get -o DPkg::Lock::Timeout=600 install -y wget curl gnupg ca-certificates locales >>"$LOG_FILE" 2>&1
 
 info "Gerando locales (en_US e pt_BR)..."
 sed -i 's/^# *\(en_US.UTF-8\)/\1/; s/^# *\(pt_BR.UTF-8\)/\1/' /etc/locale.gen
@@ -152,15 +190,15 @@ for UBU in "${VERSION_ID}" "24.04"; do
 done
 [[ $REPO_OK -eq 1 ]] || fatal "Não foi possível baixar o zabbix-release. Verifique https://repo.zabbix.com/zabbix/${ZBX_VERSION}/"
 
-dpkg -i "$TMP_DEB" >>"$LOG_FILE" 2>&1
+apt-get -o DPkg::Lock::Timeout=600 install -y "$TMP_DEB" >>"$LOG_FILE" 2>&1
 rm -f "$TMP_DEB"
-apt-get update -y >>"$LOG_FILE" 2>&1
+apt-get -o DPkg::Lock::Timeout=600 update -y >>"$LOG_FILE" 2>&1
 
 # -----------------------------------------------------------------------------
 # 4. Instalação dos pacotes
 # -----------------------------------------------------------------------------
 info "Instalando Apache, cliente PostgreSQL e Zabbix (server, frontend, agent2)..."
-apt-get install -y \
+apt-get -o DPkg::Lock::Timeout=600 install -y \
     postgresql-client \
     apache2 \
     zabbix-server-pgsql \
@@ -172,7 +210,7 @@ apt-get install -y \
     zabbix-agent2 >>"$LOG_FILE" 2>&1
 
 # Plugins opcionais do agent2 (não falha se não existirem)
-apt-get install -y zabbix-agent2-plugin-postgresql >>"$LOG_FILE" 2>&1 \
+apt-get -o DPkg::Lock::Timeout=600 install -y zabbix-agent2-plugin-postgresql >>"$LOG_FILE" 2>&1 \
     || warn "Plugin PostgreSQL do agent2 não instalado (opcional)."
 
 # -----------------------------------------------------------------------------

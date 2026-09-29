@@ -4,12 +4,12 @@
 #  Zabbix server + frontend (Apache + PHP-FPM) + Agent 2, com banco REMOTO
 #  Ubuntu 26.04
 #
-#  Rode DEPOIS do install_zabbix7_db.sh (no servidor de banco).
+#  Rode DEPOIS do install_zabbix7_db.bash (no servidor de banco).
 #
 #  Uso:
-#     sudo bash install_zabbix7_app.sh                   # lê ./.env ao lado do script
-#     sudo bash install_zabbix7_app.sh --env /caminho/app.env
-#     sudo ZBX_DB_HOST=10.0.0.10 bash install_zabbix7_app.sh
+#     sudo bash install_zabbix7_app.bash                   # lê ./.env ao lado do script
+#     sudo bash install_zabbix7_app.bash --env /caminho/app.env
+#     sudo ZBX_DB_HOST=10.0.0.10 bash install_zabbix7_app.bash
 #
 #  Parâmetros (no .env ou como variáveis de ambiente):
 #     ZBX_DB_HOST   IP/hostname do servidor de banco (OBRIGATÓRIO; se vazio, é perguntado)

@@ -4,12 +4,12 @@
 #  Ubuntu 26.04
 #
 #  Rode ESTE script PRIMEIRO, no servidor de banco.
-#  Depois rode install_zabbix7_app.sh no servidor da aplicação.
+#  Depois rode install_zabbix7_app.bash no servidor da aplicação.
 #
 #  Uso:
-#     sudo bash install_zabbix7_db.sh                    # lê ./.env ao lado do script
-#     sudo bash install_zabbix7_db.sh --env /caminho/db.env
-#     sudo ZBX_APP_IP=10.0.0.20 bash install_zabbix7_db.sh
+#     sudo bash install_zabbix7_db.bash                    # lê ./.env ao lado do script
+#     sudo bash install_zabbix7_db.bash --env /caminho/db.env
+#     sudo ZBX_APP_IP=10.0.0.20 bash install_zabbix7_db.bash
 #
 #  Parâmetros (no .env ou como variáveis de ambiente):
 #     ZBX_APP_IP    IP do servidor Zabbix (OBRIGATÓRIO; se vazio, é perguntado)

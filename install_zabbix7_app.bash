@@ -252,9 +252,11 @@ ZBX_CONF=/etc/zabbix/zabbix_server.conf
 cp -n "$ZBX_CONF" "${ZBX_CONF}.orig" || true
 
 set_conf() {  # set_conf <chave> <valor> <arquivo>
-    local k="$1" v="$2" f="$3"
+    local k="$1" v="$2" f="$3" v_sed
+    # escapa \, & e | (delimitador) para o sed gravar o valor literalmente
+    v_sed=$(printf '%s' "$v" | sed -e 's/[\\&|]/\\&/g')
     if grep -qE "^#?\s*${k}=" "$f"; then
-        sed -i "0,/^#\?\s*${k}=.*/s||${k}=${v}|" "$f"
+        sed -i "0,/^#\?\s*${k}=.*/s||${k}=${v_sed}|" "$f"
     else
         echo "${k}=${v}" >> "$f"
     fi
@@ -313,6 +315,8 @@ for pool in /etc/php/${PHP_VER}/fpm/pool.d/zabbix*.conf /etc/zabbix/php-fpm.conf
 done
 
 WEB_CONF=/etc/zabbix/web/zabbix.conf.php
+# Em string PHP com aspas simples, "\" precisa ser dobrada
+PHP_DB_PASS=$(printf '%s' "$ZBX_DB_PASS" | sed -e 's/\\/\\\\/g')
 if [[ ! -f "$WEB_CONF" ]]; then
     cat > "$WEB_CONF" <<EOF
 <?php
@@ -322,7 +326,7 @@ if [[ ! -f "$WEB_CONF" ]]; then
 \$DB['PORT']                     = '${ZBX_DB_PORT}';
 \$DB['DATABASE']                 = '${ZBX_DB_NAME}';
 \$DB['USER']                     = '${ZBX_DB_USER}';
-\$DB['PASSWORD']                 = '${ZBX_DB_PASS}';
+\$DB['PASSWORD']                 = '${PHP_DB_PASS}';
 \$DB['SCHEMA']                   = '';
 \$DB['ENCRYPTION']               = false;
 \$DB['KEY_FILE']                 = '';
